@@ -20,6 +20,7 @@ x2_min,x2_max=X[:,1].min()-1,X[:,1].min()+1
 x1,x2=np.meshgrid( np.arange(x1_min,x1_max,0.01),np.arange(x2_min,x2_max,0.01))
 
 #Ploting samples in a 3D space
+a=np.c_[x1.ravel(),x2.ravel()]
 Z=k.predict(np.c_[x1.ravel(),x2.ravel()])
 
 #plotting countors
