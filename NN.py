@@ -1,93 +1,171 @@
 import torch
 from torch import nn 
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,TensorDataset
 import torchmetrics
+import matplotlib.pyplot as plt
+import random as rand
+import imblearn
+from sklearn import metrics
+
 #loading data
-X= torch.from_numpy(np.load("Data AI/X_data.npy")).type(torch.float)
-label=torch.from_numpy(np.load("Data AI/label.npy")).type(torch.float)
-groups=torch.from_numpy(np.load("Data AI/groups.npy")).type(torch.int)
+#X=torch.from_numpy(np.load("Data AI/X_data.npy")).type(torch.float)
+X=torch.from_numpy(np.load("X_oversample_shuffled.npy")).type(torch.float)
+labels=torch.from_numpy(np.load("labels_oversample_shuffled.npy")).type(torch.int)
 
+torch.manual_seed(80)
+
+
+print(labels.shape)
+#groups=torch.from_numpy(np.load("Data AI/groups.npy")).type(torch.int)
+tags={} 
+
+
+for num in range(0,9):
+    distribution=[0]*9
+    distribution[num]=1
+    tags[num]=distribution
+#print(len(groups))
 print("Data loaded")
-print(len(label),len(X))
-# 80% of data (6100 samples) is used for training 20% is used for testing 
-
-# For the training data I split data into 100 batches each containig  61 samples
-X_train=DataLoader(dataset=X[:round(0.8*len(X))-1],batch_size=len(X[:round(0.8*len(X))])//100,shuffle=False)
-
-y_train=label[:round(0.8*len(label)-1)]
-
-
-X_test=X[6100:]
-y_test=label[6100:]
 
 # Calculate accuracy (a classification metric)
-def accuracy_fn(y_true, y_pred):
-    correct = torch.eq(y_true, y_pred).sum().item() # torch.eq() calculates where two tensors are equal
-    acc = (correct / len(y_pred)) * 100 
+def accuracy_fn(y_pred,y_t):
+    classes=[]
+    for item in y_pred:
+        classes.append(torch.argmax(item))
+    classes=torch.from_numpy(np.array(classes))
+    correct = metrics.accuracy_score(torch.detach(classes).numpy(),torch.detach(y_t).numpy())
+    acc = (correct) * 100 
     return acc
-#Defining Neural network class
+# Neural network Archituectuer Input year 1280 neurons, output layer 1 neuron, ->1280->1280->1280->10->1
 class NueralNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.stack=nn.Sequential(
+        nn.Dropout(0.1),
+        nn.Linear(in_features=1280, out_features=500),
         nn.ReLU(),
-        nn.Linear(in_features=1280, out_features=2000),
+        nn.BatchNorm1d(500),
+        nn.Dropout(0.2),
+        nn.Linear(in_features=500,out_features=500),
         nn.ReLU(),
-        nn.Linear(in_features=2000, out_features=1),
-        nn.ReLU()
-
- 
-
-        
-
-   
-        
+        nn.BatchNorm1d(500),
+        nn.Dropout(0.2),
+        nn.Linear(in_features=500,out_features=500),
+        nn.ReLU(),
+        nn.BatchNorm1d(500),
+        nn.Dropout(0.2),
+        nn.Linear(in_features=500,out_features=500),
+        nn.ReLU(),
+        nn.BatchNorm1d(500),
+        nn.Dropout(0.3),
+        nn.Linear(in_features=500,out_features=9),
         )
     def forward(self,x):
         return(self.stack(x))
+
+
+#Training Sequence
+def Train(sample,train_loss,train_acc,i):
+          
+            y_pred=model(sample).squeeze()
+
+            y_to_compare=(((y_train[i*(X_train.batch_size):(i+1)*X_train.batch_size]).reshape(len(y_train[i*X_train.batch_size:(i+1)*X_train.batch_size]),1)).type(torch.LongTensor)).flatten()
+            
+            one_hots=[]
+            for l in y_to_compare:
+                one_hots.append(tags[l.item()])
+            #computing loss
+            one_hots=torch.from_numpy(np.array(one_hots)).type(torch.float)
+            loss=loss_func(y_pred,one_hots)
+            train_loss+=loss
+        
+            train_acc+=accuracy_fn(y_pred,y_to_compare)
+           
+            #ALWAYS HAVE THIS AFTER CALULATING LOSS
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            return(train_loss,train_acc)
+
+
+def Train_last(sample,train_loss,train_acc,i):
+          
+            y_pred=model(sample).squeeze()
+
+            y_to_compare=((y_train[i*(X_train.batch_size):(i+1)*X_train.batch_size]).reshape(len(y_train[i*X_train.batch_size:(i+1)*X_train.batch_size]),1)).type(torch.LongTensor)
+            #computing loss
+            loss=loss_func(y_pred,y_to_compare.flatten())
+            train_loss+=loss
+        
+            train_acc+=accuracy_fn(y_pred,y_to_compare)
+        
+            return(train_loss,train_acc)
+
+
+#
+l=0
+r=3991
+acc=[]
+losses=[]
+
+X_train=DataLoader(dataset=X[:9120],batch_size=30,shuffle=False)
+y_train=labels[:9120]
+
+#Sanity checking
+print(X_train.batch_size)
+print(len(y_train))
     
+#Creating one hot encoding tags
+for num in range(0,9):
+    distribution=[0]*9
+    distribution[num]=1
+    tags[num]=distribution
 
 
-#Declaring a Nueral network model
+
+    #Declaring a Nueral network model
 model=NueralNet()
-model.load_state_dict(torch.load("NN1.pth"))
+ 
 
 
-#Training model
-optimizer=torch.optim.SGD(params=model.parameters(),lr=0.0001)
-loss_func=torch.nn.MSELoss()
+#Defining loss function and learning rate
+optimizer=torch.optim.SGD(params=model.parameters(),lr=0.05)
+loss_func=torch.nn.CrossEntropyLoss()
 
-enumerate(y_train)
-train_acc=0
+#Training
 losses=[]
 accuracy=[]
-for epoch in range(1000):
-    model.train()
+epochs=[]
+distributions=[]
+model.train()
+for epoch in range(101):
     train_loss=0
     train_acc=0
     for i,sample_i in enumerate(X_train):
-            y_pred=model(sample_i.reshape(X_train.batch_size,1280))
-            y_expected=y_train[i*61:(i*61)+61]
-            y_pred=y_pred.reshape(len(y_pred))
-            loss=loss_func(y_pred,y_expected)
-            train_loss+=loss
-            train_acc+=accuracy_fn(y_expected,torch.round(y_pred))
-            #ALWAYS HAVE THIS AFTER CALULATING LOSS
-            optimizer.zero_grad()
-            clip_value=1
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
-            loss.backward()
-            optimizer.step()
-    losses.append(train_loss/len(X_train)) 
-    accuracy.append(train_acc/len(X_train))
-    torch.save(model.state_dict(),f="NN1.pth")           
-print("done")      
+        train_loss,train_acc=Train(sample_i.reshape(X_train.batch_size,128*10),train_loss,train_acc,i)
 
-               
+    #print(i)
+    average_loss=(train_loss/(i+1))
+    average_accuracy=(train_acc/(i+1))
+    print("Epoch ",epoch," Model training accuracy: ", average_accuracy)
+    losses.append(average_loss.detach().numpy())
+    accuracy.append(average_accuracy)
+    epochs.append(epoch)
 
+plt.plot(np.array(epochs),np.array(losses))
+plt.xlabel("epoch")
+plt.ylabel("Training loss") 
+plt.show()     
 
-#Need a testing and validation group
+plt.plot(np.array(epochs),np.array(accuracy))
+plt.xlabel("epoch")
+plt.ylabel("Accuracy")
+plt.show()       
+print("done")
 
+model.eval()
+torch.save(model.state_dict(),f="NN1.pth") 
+print(distributions)
 
 
